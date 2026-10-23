@@ -1,0 +1,21 @@
+name: Setup Expo project
+on: { workflow_dispatch: {} }
+permissions: { contents: write }
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    env: { EXPO_TOKEN: "${{ secrets.EXPO_TOKEN }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx --yes eas-cli@latest init --non-interactive --force
+      - run: npx --yes eas-cli@latest update:configure --platform android --non-interactive
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.json eas.json
+          git diff --cached --quiet && exit 0
+          git commit -m "Link Expo project and enable EAS Update"
+          git push
