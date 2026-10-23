@@ -17,7 +17,13 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.rdzaman.pinvault"
+      "package": "com.rdzaman.pinvault",
+      "permissions": [
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -35,6 +41,15 @@
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "backgroundColor": "#0f0f12"
+    "backgroundColor": "#0f0f12",
+    "extra": {
+      "eas": {
+        "projectId": "4ee75d4f-83dc-4f0c-994d-b5b25aeec3bb"
+      }
+    },
+    "owner": "nahin20k",
+    "updates": {
+      "url": "https://u.expo.dev/4ee75d4f-83dc-4f0c-994d-b5b25aeec3bb"
+    }
   }
 }
