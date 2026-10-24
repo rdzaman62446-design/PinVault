@@ -1,13 +1,9 @@
-// Pure helpers for image URLs from Pinterest and Reddit (testable without React Native).
+// Pure helpers for image URLs from the supported sites (testable without React Native).
 
 const PINIMG = /^(https?:\/\/i\.pinimg\.com)\/[^/]+\/(.+?)(\?.*)?$/;
 const REDDIT_PREVIEW = /^https?:\/\/preview\.redd\.it\/([^/?#]+)/;
-
-/** Image hosts whose pictures get a download button, per site. */
-export const IMAGE_HOSTS = {
-  pinterest: ['i.pinimg.com'],
-  reddit: ['i.redd.it', 'preview.redd.it', 'external-preview.redd.it'],
-};
+const X_MEDIA = /^https?:\/\/pbs\.twimg\.com\/media\/([A-Za-z0-9_-]+)(?:\.(\w+))?/;
+const TUMBLR_SIZE = /^(https?:\/\/[^/]*media\.tumblr\.com\/.+)\/s\d+x\d+\/(.+)$/;
 
 function fileName(src: string): string {
   return src.split(/[?#]/)[0].split('/').pop() ?? '';
@@ -38,6 +34,15 @@ export function candidateUrls(src: string): string[] {
     // Previews are resized; the uploaded original lives on i.redd.it.
     return unique([`https://i.redd.it/${redditOriginalName(preview[1])}`, src.replace(/&amp;/g, '&')]);
   }
+  const x = src.match(X_MEDIA);
+  if (x) {
+    // X serves the full-size upload with name=orig.
+    const format = src.match(/[?&]format=(\w+)/)?.[1] ?? x[2] ?? 'jpg';
+    const base = `https://pbs.twimg.com/media/${x[1]}?format=${format}`;
+    return unique([`${base}&name=orig`, `${base}&name=4096x4096`, `${base}&name=large`, src]);
+  }
+  const tumblr = src.match(TUMBLR_SIZE);
+  if (tumblr) return unique([`${tumblr[1]}/s2048x3072/${tumblr[2]}`, src]);
   return [src.replace(/&amp;/g, '&')];
 }
 
@@ -45,16 +50,13 @@ export function candidateUrls(src: string): string[] {
 export function imageId(src: string): string {
   let name = fileName(src);
   if (REDDIT_PREVIEW.test(src)) name = redditOriginalName(name);
+  const x = src.match(X_MEDIA);
+  if (x) name = x[1];
   return name.replace(/\.\w+$/, '').replace(/[^a-zA-Z0-9_-]/g, '') || 'image';
 }
 
-/** Referer header the image host expects. */
-export function refererFor(src: string): string {
-  return /redd\.it|reddit/.test(src) ? 'https://www.reddit.com/' : 'https://www.pinterest.com/';
-}
-
 export function extensionOf(url: string): string {
-  const m = url.split('?')[0].match(/\.(jpe?g|png|gif|webp)$/i);
+  const m = url.split('?')[0].match(/\.(jpe?g|png|gif|webp)$/i) ?? url.match(/[?&]format=(jpe?g|png|gif|webp)\b/i);
   return m ? m[1].toLowerCase().replace('jpeg', 'jpg') : 'jpg';
 }
 

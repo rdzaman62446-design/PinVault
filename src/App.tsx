@@ -8,12 +8,13 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { BrowserScreen } from './BrowserScreen';
 import { HomeScreen } from './HomeScreen';
 import { shouldLockOnBackground, unlock } from './lock';
-import { SITES } from './sites';
+import { SITE_LIST, type SiteId } from './sites';
 import { colors } from './theme';
 import { useUpdateCheck } from './updates';
+import { initVault } from './vault';
 import { VaultScreen } from './VaultScreen';
 
-type Screen = 'home' | 'pinterest' | 'reddit' | 'vault';
+type Screen = 'home' | 'vault' | SiteId;
 
 export default function App() {
   // Blocks screenshots and hides the app's content in the recent-apps screen.
@@ -24,8 +25,7 @@ export default function App() {
   const [everUnlocked, setEverUnlocked] = useState(false);
   const [screen, setScreen] = useState<Screen>('home');
   // Each site loads the first time it's opened, then stays mounted to keep its place.
-  const [opened, setOpened] = useState({ pinterest: false, reddit: false });
-  const [version, setVersion] = useState(0);
+  const [opened, setOpened] = useState<Partial<Record<SiteId, boolean>>>({});
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
@@ -37,7 +37,11 @@ export default function App() {
   const onUnlocked = useCallback(() => {
     setLocked(false);
     setEverUnlocked(true);
+    // Opens the encrypted index (and encrypts images from older versions) after the first unlock.
+    initVault();
   }, []);
+
+  const goHome = useCallback(() => setScreen('home'), []);
 
   // Android back from the Vault returns Home. (Sites handle their own back button.)
   useEffect(() => {
@@ -49,10 +53,8 @@ export default function App() {
     return () => sub.remove();
   }, [screen]);
 
-  const bump = () => setVersion((v) => v + 1);
-
   function open(next: Screen) {
-    if (next === 'pinterest' || next === 'reddit') setOpened((o) => ({ ...o, [next]: true }));
+    if (next !== 'home' && next !== 'vault') setOpened((o) => ({ ...o, [next]: true }));
     setScreen(next);
   }
 
@@ -64,25 +66,18 @@ export default function App() {
           <>
             <View style={styles.content}>
               <View style={[styles.fill, screen !== 'home' && styles.hidden]}>
-                <HomeScreen
-                  version={version}
-                  openPinterest={() => open('pinterest')}
-                  openReddit={() => open('reddit')}
-                  openVault={() => open('vault')}
-                />
+                <HomeScreen openSite={open} openVault={() => open('vault')} />
               </View>
-              {opened.pinterest && (
-                <View style={[styles.fill, screen !== 'pinterest' && styles.hidden]}>
-                  <BrowserScreen site={SITES.pinterest} active={screen === 'pinterest' && !locked} onSaved={bump} onExit={() => open('home')} />
-                </View>
-              )}
-              {opened.reddit && (
-                <View style={[styles.fill, screen !== 'reddit' && styles.hidden]}>
-                  <BrowserScreen site={SITES.reddit} active={screen === 'reddit' && !locked} onSaved={bump} onExit={() => open('home')} />
-                </View>
+              {SITE_LIST.map(
+                (site) =>
+                  opened[site.id] && (
+                    <View key={site.id} style={[styles.fill, screen !== site.id && styles.hidden]}>
+                      <BrowserScreen site={site} active={screen === site.id && !locked} onExit={goHome} />
+                    </View>
+                  ),
               )}
               <View style={[styles.fill, screen !== 'vault' && styles.hidden]}>
-                <VaultScreen version={version} onChanged={bump} />
+                <VaultScreen />
               </View>
             </View>
             <View style={styles.tabs}>

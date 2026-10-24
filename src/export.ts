@@ -2,24 +2,22 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
 import { whileUnlocked } from './lock';
-import { listImages } from './vault';
+import { exportName, readImageBytes } from './vault';
+import type { VaultImage } from './vaultFilters';
 import { writeZip } from './zip';
 
-/** Packs every Vault image into one ZIP and opens the share sheet (pick Drive to choose an account). */
-export async function exportAllToShare(onProgress: (done: number, total: number) => void) {
-  const images = listImages();
+/**
+ * Decrypts the given images into one ZIP and opens the share sheet (pick Drive to choose an account).
+ * The plain ZIP is deleted the next time the app starts.
+ */
+export async function exportToShare(images: VaultImage[], onProgress: (done: number, total: number) => void) {
   if (images.length === 0) return;
-
-  // Remove earlier exports; they're only needed until the receiving app has copied them.
-  for (const f of Paths.cache.list()) {
-    if (f instanceof File && f.name.startsWith('PinVault-export-')) f.delete();
-  }
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
   const out = new File(Paths.cache, `PinVault-export-${stamp}.zip`);
-  out.create();
+  out.create({ overwrite: true });
 
   await writeZip(
-    images.map((img) => ({ name: img.name, read: () => new File(img.uri).bytes() })),
+    images.map((img) => ({ name: exportName(img), read: () => readImageBytes(img) })),
     (chunk) => out.write(chunk, { append: true }),
     onProgress,
   );

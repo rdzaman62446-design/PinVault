@@ -6,23 +6,34 @@ export const buildInjectedJs = (hosts: string[], extraJs = '') => `
   window.__pinvault = true;
   var HOSTS = ${JSON.stringify(hosts)};
 
+  function srcOf(img) {
+    return img.currentSrc || img.src || img.getAttribute('data-lazy-src') || '';
+  }
+
+  // Matches a host or any of its subdomains (e.g. scontent-xyz.cdninstagram.com).
+  function fromSite(src) {
+    var m = /^https?:\\/\\/([^\\/?#]+)/.exec(src);
+    if (!m) return false;
+    for (var h = 0; h < HOSTS.length; h++) {
+      var host = HOSTS[h], name = m[1];
+      if (name === host || name.slice(-host.length - 1) === '.' + host) return true;
+    }
+    return false;
+  }
+
   function findImgs() {
     var all = document.querySelectorAll('img');
     var out = [];
-    for (var i = 0; i < all.length; i++) {
-      var src = all[i].currentSrc || all[i].src || '';
-      for (var h = 0; h < HOSTS.length; h++) {
-        if (src.indexOf('//' + HOSTS[h] + '/') !== -1) { out.push(all[i]); break; }
-      }
-    }
+    for (var i = 0; i < all.length; i++) if (fromSite(srcOf(all[i]))) out.push(all[i]);
     return out;
   }
 
   function bestUrl(img) {
-    var url = img.currentSrc || img.src;
+    var url = srcOf(img);
     var max = 0;
-    if (img.srcset) {
-      img.srcset.split(',').forEach(function (part) {
+    var srcset = img.srcset || img.getAttribute('data-lazy-srcset') || '';
+    if (srcset) {
+      srcset.split(',').forEach(function (part) {
         var bits = part.trim().split(/\\s+/);
         var w = parseFloat(bits[1]) || 0;
         if (bits[0] && w >= max) { max = w; url = bits[0]; }
@@ -86,6 +97,41 @@ export const buildInjectedJs = (hosts: string[], extraJs = '') => `
     }
   }
 
+  // "Save all": scrolls through the page collecting every image, then reports the list.
+  window.__pinvaultCollect = function () {
+    if (window.__pinvaultCollecting) return;
+    window.__pinvaultCollecting = true;
+    window.__pinvaultStop = false;
+    var seen = {}, urls = [], lastHeight = -1, still = 0;
+    function grab() {
+      var imgs = findImgs();
+      for (var i = 0; i < imgs.length; i++) {
+        var r = imgs[i].getBoundingClientRect();
+        var lazy = imgs[i].hasAttribute('data-lazy-src');
+        if (!lazy && (r.width < 80 || r.height < 80)) continue;
+        var u = bestUrl(imgs[i]);
+        if (u && !seen[u]) { seen[u] = 1; urls.push(u); }
+      }
+    }
+    function finish() {
+      window.__pinvaultCollecting = false;
+      send({ type: 'collected', urls: urls, title: document.title || '' });
+    }
+    function step() {
+      try { grab(); } catch (e) {}
+      send({ type: 'collecting', count: urls.length });
+      var height = document.documentElement.scrollHeight;
+      var atBottom = window.innerHeight + window.scrollY >= height - 40;
+      still = atBottom && height === lastHeight ? still + 1 : 0;
+      lastHeight = height;
+      if (window.__pinvaultStop || urls.length >= 300 || still >= 4) return finish();
+      window.scrollBy(0, Math.round(window.innerHeight * 0.8));
+      setTimeout(step, 900);
+    }
+    window.scrollTo(0, 0);
+    setTimeout(step, 700);
+  };
+
   function safeDecorate() { try { decorate(); } catch (e) {} }
   setInterval(safeDecorate, 800);
   safeDecorate();
@@ -121,3 +167,5 @@ export const REDDIT_CLEANUP_JS = `
 `;
 
 export const SAVE_VISIBLE_JS = 'window.__pinvaultSaveVisible && window.__pinvaultSaveVisible(); true;';
+export const COLLECT_ALL_JS = 'window.__pinvaultCollect && window.__pinvaultCollect(); true;';
+export const STOP_COLLECT_JS = 'window.__pinvaultStop = true; true;';
