@@ -94,6 +94,8 @@ export function BrowserScreen({ site, active, onExit }: Props) {
       return;
     }
     if (msg.type === 'none') showToast('No image on screen. Open a post first.');
+    else if (msg.type === 'resolving') showToast('Getting the video…');
+    else if (msg.type === 'videoFail') showToast("Couldn't get this video. Open the reel or post itself and try again.");
     else if (msg.type === 'save' && msg.url) saveOne(msg.url);
     else if (msg.type === 'collecting') setBulk((b) => (b?.phase === 'collecting' ? { phase: 'collecting', count: msg.count ?? 0 } : b));
     else if (msg.type === 'collected') {

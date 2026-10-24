@@ -11,7 +11,7 @@ import { shouldLockOnBackground, unlock } from './lock';
 import { SITE_LIST, type SiteId } from './sites';
 import { colors } from './theme';
 import { useUpdateCheck } from './updates';
-import { initVault } from './vault';
+import { cleanupTemp, initVault } from './vault';
 import { VaultScreen } from './VaultScreen';
 
 type Screen = 'home' | 'vault' | SiteId;
@@ -31,7 +31,11 @@ export default function App() {
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'background' && shouldLockOnBackground()) setLocked(true);
+      if (state === 'background' && shouldLockOnBackground()) {
+        setLocked(true);
+        // Remove decrypted copies (videos being played, shared images) while locked.
+        cleanupTemp();
+      }
     });
     return () => sub.remove();
   }, []);

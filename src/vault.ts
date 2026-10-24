@@ -1,16 +1,17 @@
 import { randomUUID } from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { strFromU8, strToU8 } from 'fflate';
 import { useSyncExternalStore } from 'react';
 
 import { decrypt, decryptBase64, encrypt, getKey } from './crypto';
-import { candidateUrls, extensionOf, imageId, mimeOf } from './imageUrls';
+import { candidateUrls, extensionOf, imageId, isVideoExt, mimeOf } from './imageUrls';
 import { type Album, parseLegacyName, type SourceId, type VaultImage } from './vaultFilters';
 
 // Layout (app-private storage, invisible to other apps and the Gallery). Everything is AES-256-GCM encrypted:
 //   vault/index.bin     JSON list of images and albums
-//   vault/img/<key>     original image
+//   vault/img/<key>     original image or video
 //   vault/thumb/<key>   small JPEG preview for the grid
 
 function dir(...parts: (Directory | string)[]): Directory {
@@ -84,7 +85,7 @@ export function initVault(): Promise<void> {
       }
       set({ ready: true });
       // Leftover shared/exported plain files from an earlier session.
-      tempDir().delete();
+      cleanupTemp();
       for (const f of Paths.cache.list()) if (f instanceof File && f.name.startsWith('PinVault-export-')) f.delete();
       await migrateLegacy();
     } catch {
@@ -116,8 +117,32 @@ async function migrateLegacy() {
   set({ migrating: null });
 }
 
-async function makeThumb(uri: string): Promise<Uint8Array | null> {
+/** Removes decrypted copies made for sharing or video playback (downloads in progress are kept). */
+export function cleanupTemp() {
   try {
+    const d = new Directory(Paths.cache, 'pv-temp');
+    if (!d.exists) return;
+    for (const f of d.list()) if (!f.name.startsWith('dl-')) f.delete();
+  } catch {
+    // A file may still be in use; it's removed next time.
+  }
+}
+
+export function isVideo(img: Pick<VaultImage, 'ext'>): boolean {
+  return isVideoExt(img.ext);
+}
+
+async function makeThumb(uri: string, video: boolean): Promise<Uint8Array | null> {
+  let frame: File | null = null;
+  try {
+    if (video) {
+      // A frame from one second in (or the first frame for very short clips).
+      const shot = await VideoThumbnails.getThumbnailAsync(uri, { time: 1000, quality: 0.8 }).catch(() =>
+        VideoThumbnails.getThumbnailAsync(uri, { time: 0, quality: 0.8 }),
+      );
+      frame = new File(shot.uri);
+      uri = shot.uri;
+    }
     const ref = await ImageManipulator.manipulate(uri).resize({ width: 360 }).renderAsync();
     const out = await ref.saveAsync({ compress: 0.75, format: SaveFormat.JPEG });
     const f = new File(out.uri);
@@ -126,13 +151,17 @@ async function makeThumb(uri: string): Promise<Uint8Array | null> {
     return bytes;
   } catch {
     return null;
+  } finally {
+    if (frame?.exists) frame.delete();
   }
 }
 
 async function store(plain: File, meta: Omit<VaultImage, 'key'>) {
   const key = randomUUID();
   const bytes = await plain.bytes();
-  const thumb = (await makeThumb(plain.uri)) ?? bytes;
+  const video = isVideoExt(meta.ext);
+  // A video without a preview gets an empty one; the grid then shows just the play badge.
+  const thumb = (await makeThumb(plain.uri, video)) ?? (video ? new Uint8Array() : bytes);
   await writeEncrypted(new File(imgDir(), key), bytes);
   await writeEncrypted(new File(thumbDir(), key), thumb);
   set({ images: [{ key, ...meta }, ...state.images] });

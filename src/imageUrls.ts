@@ -56,11 +56,16 @@ export function imageId(src: string): string {
 }
 
 export function extensionOf(url: string): string {
-  const m = url.split('?')[0].match(/\.(jpe?g|png|gif|webp)$/i) ?? url.match(/[?&]format=(jpe?g|png|gif|webp)\b/i);
+  const m = url.split('?')[0].match(/\.(jpe?g|png|gif|webp|mp4)$/i) ?? url.match(/[?&]format=(jpe?g|png|gif|webp)\b/i);
   return m ? m[1].toLowerCase().replace('jpeg', 'jpg') : 'jpg';
 }
 
+export function isVideoExt(ext: string): boolean {
+  return ext === 'mp4';
+}
+
 export function mimeOf(ext: string): string {
+  if (isVideoExt(ext)) return 'video/mp4';
   return ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
 }
 

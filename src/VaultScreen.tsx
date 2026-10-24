@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
 import * as Sharing from 'expo-sharing';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { memo, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, BackHandler, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,7 +14,7 @@ import { NamePrompt, Sheet, type SheetOption } from './Sheet';
 import { SITES, type SiteId } from './sites';
 import { colors } from './theme';
 import { useFullImage, useThumb } from './useThumb';
-import { createAlbum, decryptToTempFile, deleteAlbum, deleteImages, moveToAlbum, renameAlbum, useVault } from './vault';
+import { createAlbum, decryptToTempFile, deleteAlbum, deleteImages, isVideo, moveToAlbum, renameAlbum, useVault } from './vault';
 import { imagesInAlbum, type VaultImage } from './vaultFilters';
 
 type Layout = 'tiles' | 'cards' | 'feed';
@@ -438,7 +439,15 @@ const Item = memo(function Item({
     <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={300}>
       <View style={{ width, height, borderRadius: radius, overflow: 'hidden', backgroundColor: colors.card }}>
         {/* Feed shows the full image; tiles and cards use the small preview. */}
-        {layout === 'feed' ? <FullPhoto img={item} /> : <ThumbPhoto imageKey={item.key} />}
+        {layout === 'feed' && !isVideo(item) ? <FullPhoto img={item} /> : <ThumbPhoto imageKey={item.key} />}
+        {isVideo(item) &&
+          (layout === 'tiles' ? (
+            <Ionicons name="play" size={16} color="#fff" style={styles.videoBadgeSmall} />
+          ) : (
+            <View style={styles.videoBadge}>
+              <Ionicons name="play" size={layout === 'feed' ? 30 : 20} color="#fff" />
+            </View>
+          ))}
         {selecting && (
           <View style={[StyleSheet.absoluteFill, checked && styles.itemChecked]}>
             <Ionicons name={checked ? 'checkmark-circle' : 'ellipse-outline'} size={26} color={checked ? colors.accent : '#fff'} style={styles.check} />
@@ -515,7 +524,11 @@ function Viewer({
             extraData={index}
             renderItem={({ item, index: i }) => (
               // Only decrypt the image on screen and its neighbours.
-              <FullImage img={Math.abs(i - index) <= 1 ? item : null} width={width} height={height - 170} />
+              isVideo(item) ? (
+                <VideoPage img={item} active={i === index} width={width} height={height - 170} />
+              ) : (
+                <FullImage img={Math.abs(i - index) <= 1 ? item : null} width={width} height={height - 170} />
+              )
             )}
           />
         )}
@@ -541,6 +554,34 @@ function FullImage({ img, width, height }: { img: VaultImage | null; width: numb
   return (
     <View style={{ width, height, alignItems: 'center', justifyContent: 'center' }}>
       {uri ? <Image source={{ uri }} style={{ width, height }} contentFit="contain" /> : <ActivityIndicator color={colors.muted} />}
+    </View>
+  );
+}
+
+/** Plays a saved video: decrypted to a temporary file only while it's on screen. */
+function VideoPage({ img, active, width, height }: { img: VaultImage; active: boolean; width: number; height: number }) {
+  const [file, setFile] = useState<{ key: string; uri: string } | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    let alive = true;
+    decryptToTempFile(img)
+      .then((f) => alive && setFile({ key: img.key, uri: f.uri }))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [active, img]);
+  const uri = file?.key === img.key ? file.uri : null;
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = true;
+  });
+  useEffect(() => {
+    if (active && uri) player.play();
+    else player.pause();
+  }, [active, uri, player]);
+  return (
+    <View style={{ width, height, alignItems: 'center', justifyContent: 'center' }}>
+      {uri ? <VideoView player={player} style={{ width, height }} contentFit="contain" nativeControls /> : <ActivityIndicator color={colors.muted} />}
     </View>
   );
 }
@@ -594,6 +635,8 @@ const styles = StyleSheet.create({
   layoutText: { fontSize: 12, fontWeight: '700' },
   caption: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingTop: 6, paddingHorizontal: 2 },
   captionText: { flex: 1, color: colors.muted, fontSize: 12 },
+  videoBadge: { position: 'absolute', top: '50%', left: '50%', transform: [{ translateX: -24 }, { translateY: -24 }], width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', paddingLeft: 3 },
+  videoBadgeSmall: { position: 'absolute', bottom: 6, left: 6, textShadowColor: 'rgba(0,0,0,0.8)', textShadowRadius: 4 },
   itemChecked: { backgroundColor: 'rgba(230,0,35,0.25)' },
   check: { position: 'absolute', top: 8, right: 8 },
   actionBar: { position: 'absolute', left: 12, right: 12, bottom: 12, flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 10, borderRadius: 18, backgroundColor: colors.card, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
