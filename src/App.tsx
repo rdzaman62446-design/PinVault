@@ -26,6 +26,8 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
   // Each site loads the first time it's opened, then stays mounted to keep its place.
   const [opened, setOpened] = useState<Partial<Record<SiteId, boolean>>>({});
+  // Where the Vault was opened from, so Back returns there (e.g. the site you were browsing).
+  const [vaultFrom, setVaultFrom] = useState<Screen>('home');
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
@@ -43,17 +45,18 @@ export default function App() {
 
   const goHome = useCallback(() => setScreen('home'), []);
 
-  // Android back from the Vault returns Home. (Sites handle their own back button.)
+  // Android back from the Vault returns to where you came from. (Sites handle their own back button.)
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (screen !== 'vault') return false;
-      setScreen('home');
+      setScreen(vaultFrom);
       return true;
     });
     return () => sub.remove();
-  }, [screen]);
+  }, [screen, vaultFrom]);
 
   function open(next: Screen) {
+    if (next === 'vault' && screen !== 'vault') setVaultFrom(screen);
     if (next !== 'home' && next !== 'vault') setOpened((o) => ({ ...o, [next]: true }));
     setScreen(next);
   }

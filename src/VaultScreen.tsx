@@ -1,8 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image } from 'expo-image';
 import * as Sharing from 'expo-sharing';
-import { memo, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { memo, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, BackHandler, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { exportToShare } from './export';
@@ -32,6 +32,16 @@ export function VaultScreen() {
   const [prompt, setPrompt] = useState<Prompt>(null);
   const [promptId, setPromptId] = useState(0);
   const [exporting, setExporting] = useState<string | null>(null);
+
+  // Back leaves selection mode before leaving the Vault.
+  useEffect(() => {
+    if (!selected) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setSelected(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [selected]);
 
   const shown = useMemo(() => filterImages(vault.images, filters, now), [vault.images, filters, now]);
   const sources = useMemo(() => [...new Set(vault.images.map((i) => i.source))], [vault.images]);
