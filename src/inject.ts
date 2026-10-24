@@ -73,8 +73,9 @@ export const INJECTED_JS = `
     }
   }
 
-  setInterval(decorate, 800);
-  decorate();
+  function safeDecorate() { try { decorate(); } catch (e) {} }
+  setInterval(safeDecorate, 800);
+  safeDecorate();
 })();
 true;
 `;

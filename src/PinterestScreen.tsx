@@ -5,10 +5,15 @@ import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-web
 import type { WebViewProps } from 'react-native-webview/lib/WebView';
 
 import { INJECTED_JS, SAVE_VISIBLE_JS } from './inject';
+import { resolveNavigation } from './navigation';
 import { colors } from './theme';
 import { saveFromUrl } from './vault';
 
 const HOME = 'https://www.pinterest.com/';
+// Pinterest serves a broken page to Android's in-app browser, so present as normal mobile Chrome.
+const USER_AGENT =
+  'Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36';
+
 
 // The library's typings drop `ref` under React 19; the component still forwards it.
 type WebViewHandle = { goBack(): void; reload(): void; injectJavaScript(js: string): void };
@@ -21,6 +26,7 @@ export function PinterestScreen({ active, onSaved }: Props) {
   const [canGoBack, setCanGoBack] = useState(false);
   const [saving, setSaving] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function showToast(text: string) {
@@ -83,15 +89,33 @@ export function PinterestScreen({ active, onSaved }: Props) {
         injectedJavaScript={INJECTED_JS}
         onMessage={onMessage}
         onNavigationStateChange={(s) => setCanGoBack(s.canGoBack)}
+        onLoadStart={() => setLoadError(null)}
         onLoadEnd={() => web.current?.injectJavaScript(INJECTED_JS)}
+        onError={(e) => setLoadError(e.nativeEvent.description || 'Page failed to load')}
+        onShouldStartLoadWithRequest={(req) => {
+          const nav = resolveNavigation(req.url);
+          if (!nav.allow && nav.redirect) web.current?.injectJavaScript(`location.href=${JSON.stringify(nav.redirect)};true;`);
+          return nav.allow;
+        }}
+        userAgent={USER_AGENT}
+        originWhitelist={['*']}
         domStorageEnabled
+        javaScriptEnabled
         thirdPartyCookiesEnabled
         sharedCookiesEnabled
         setSupportMultipleWindows={false}
-        pullToRefreshEnabled
         allowsBackForwardNavigationGestures
         onRenderProcessGone={() => web.current?.reload()}
       />
+      {loadError && (
+        <View style={styles.error}>
+          <Ionicons name="cloud-offline-outline" size={48} color={colors.dim} />
+          <Text style={styles.errorText}>{loadError}</Text>
+          <Pressable style={styles.saveBtn} onPress={() => web.current?.reload()}>
+            <Text style={styles.saveText}>Retry</Text>
+          </Pressable>
+        </View>
+      )}
       {toast && (
         <View style={styles.toast} pointerEvents="none">
           <Text style={styles.toastText}>{toast}</Text>
@@ -116,6 +140,8 @@ const styles = StyleSheet.create({
   saveBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.accent, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 18 },
   saveText: { color: '#fff', fontWeight: '600' },
   web: { flex: 1, backgroundColor: colors.bg },
+  error: { ...StyleSheet.absoluteFill, top: 48, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 32 },
+  errorText: { color: colors.muted, textAlign: 'center' },
   toast: { position: 'absolute', bottom: 24, alignSelf: 'center', backgroundColor: 'rgba(30,30,36,0.95)', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
   toastText: { color: colors.text },
 });
