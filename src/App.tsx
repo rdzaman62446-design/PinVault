@@ -6,8 +6,8 @@ import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrowserScreen } from './BrowserScreen';
-import { IMAGE_HOSTS } from './imageUrls';
 import { shouldLockOnBackground, unlock } from './lock';
+import { SITES } from './sites';
 import { colors } from './theme';
 import { useUpdateCheck } from './updates';
 import { VaultScreen } from './VaultScreen';
@@ -54,11 +54,11 @@ export default function App() {
             <View style={styles.content}>
               {/* Tabs stay mounted so each site keeps its place. */}
               <View style={[styles.fill, tab !== 'pinterest' && styles.hidden]}>
-                <BrowserScreen home="https://www.pinterest.com/" imageHosts={IMAGE_HOSTS.pinterest} active={tab === 'pinterest' && !locked} onSaved={bump} />
+                <BrowserScreen site={SITES.pinterest} active={tab === 'pinterest' && !locked} onSaved={bump} />
               </View>
               {redditOpened && (
                 <View style={[styles.fill, tab !== 'reddit' && styles.hidden]}>
-                  <BrowserScreen home="https://www.reddit.com/" imageHosts={IMAGE_HOSTS.reddit} active={tab === 'reddit' && !locked} onSaved={bump} />
+                  <BrowserScreen site={SITES.reddit} active={tab === 'reddit' && !locked} onSaved={bump} />
                 </View>
               )}
               <View style={[styles.fill, tab !== 'vault' && styles.hidden]}>

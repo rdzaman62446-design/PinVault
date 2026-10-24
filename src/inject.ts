@@ -1,6 +1,6 @@
 // JavaScript injected into the site. It adds a ⬇ button on every image from `hosts` and
 // reports the chosen image URL to the app with postMessage({ type: 'save', url }).
-export const buildInjectedJs = (hosts: string[]) => `
+export const buildInjectedJs = (hosts: string[], extraJs = '') => `
 (function () {
   if (window.__pinvault) return;
   window.__pinvault = true;
@@ -89,8 +89,35 @@ export const buildInjectedJs = (hosts: string[]) => `
   function safeDecorate() { try { decorate(); } catch (e) {} }
   setInterval(safeDecorate, 800);
   safeDecorate();
+${extraJs}
 })();
 true;
+`;
+
+// Reddit's mobile site covers the page with "get the app" prompts (<xpromo-*> elements)
+// and locks scrolling. Remove the prompts; unwrap the ones that wrap real content.
+export const REDDIT_CLEANUP_JS = `
+  function cleanReddit() {
+    var all = document.querySelectorAll('*');
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      var tag = el.tagName.toLowerCase();
+      var promo = tag.indexOf('xpromo') === 0 || /xpromo/i.test(el.id || '') ||
+        (el.getAttribute('bundlename') || '').indexOf('xpromo') !== -1;
+      if (!promo || !el.parentNode) continue;
+      if (tag.indexOf('blocking-container') !== -1 || tag.indexOf('content-gate') !== -1) {
+        while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el);
+      }
+      el.parentNode.removeChild(el);
+    }
+    var lock = [document.documentElement, document.body];
+    for (var j = 0; j < lock.length; j++) {
+      if (!lock[j]) continue;
+      if (lock[j].style.overflow === 'hidden') lock[j].style.overflow = '';
+      if (lock[j].style.position === 'fixed') lock[j].style.position = '';
+    }
+  }
+  setInterval(function () { try { cleanReddit(); } catch (e) {} }, 700);
 `;
 
 export const SAVE_VISIBLE_JS = 'window.__pinvaultSaveVisible && window.__pinvaultSaveVisible(); true;';

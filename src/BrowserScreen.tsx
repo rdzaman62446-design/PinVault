@@ -10,7 +10,7 @@ import { colors } from './theme';
 import { saveFromUrl } from './vault';
 
 // Sites like Pinterest serve a broken page to Android's in-app browser, so present as normal mobile Chrome.
-const USER_AGENT =
+export const MOBILE_CHROME_UA =
   'Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36';
 
 
@@ -18,12 +18,15 @@ const USER_AGENT =
 type WebViewHandle = { goBack(): void; reload(): void; injectJavaScript(js: string): void };
 const WebView = RNWebView as unknown as ComponentType<WebViewProps & { ref?: Ref<WebViewHandle> }>;
 
-type Props = { home: string; imageHosts: string[]; active: boolean; onSaved: () => void };
+export type Site = { home: string; imageHosts: string[]; userAgent: string; extraJs?: string };
+
+type Props = { site: Site; active: boolean; onSaved: () => void };
 
 /** A logged-in website (Pinterest, Reddit) with download buttons on its images. */
-export function BrowserScreen({ home, imageHosts, active, onSaved }: Props) {
+export function BrowserScreen({ site, active, onSaved }: Props) {
+  const { home } = site;
   const web = useRef<WebViewHandle>(null);
-  const injectedJs = useMemo(() => buildInjectedJs(imageHosts), [imageHosts]);
+  const injectedJs = useMemo(() => buildInjectedJs(site.imageHosts, site.extraJs), [site]);
   const [canGoBack, setCanGoBack] = useState(false);
   const [saving, setSaving] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
@@ -98,7 +101,7 @@ export function BrowserScreen({ home, imageHosts, active, onSaved }: Props) {
           if (!nav.allow && nav.redirect) web.current?.injectJavaScript(`location.href=${JSON.stringify(nav.redirect)};true;`);
           return nav.allow;
         }}
-        userAgent={USER_AGENT}
+        userAgent={site.userAgent}
         originWhitelist={['*']}
         domStorageEnabled
         javaScriptEnabled
