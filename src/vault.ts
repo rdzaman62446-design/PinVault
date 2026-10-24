@@ -1,6 +1,6 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
-import { candidateUrls, extensionOf, imageId } from './pinimg';
+import { candidateUrls, extensionOf, imageId, refererFor } from './imageUrls';
 
 // Images live in the app's private storage: other apps and the phone's Gallery can't see them.
 function vaultDir(): Directory {
@@ -32,7 +32,7 @@ export async function saveFromUrl(src: string): Promise<SaveResult> {
     const tmp = new File(Paths.cache, `pv-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     try {
       const downloaded = await File.downloadFileAsync(url, tmp, {
-        headers: { Referer: 'https://www.pinterest.com/' },
+        headers: { Referer: refererFor(src) },
       });
       if (!downloaded.exists || downloaded.size < 1024) throw new Error('Empty download');
       downloaded.moveSync(new File(dir, `${Date.now()}_${id}.${extensionOf(url)}`));

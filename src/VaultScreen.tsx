@@ -6,7 +6,7 @@ import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, useWindowDimension
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { whileUnlocked } from './lock';
-import { extensionOf, mimeOf } from './pinimg';
+import { extensionOf, mimeOf } from './imageUrls';
 import { colors } from './theme';
 import { deleteImage, listImages, type VaultImage } from './vault';
 
@@ -53,7 +53,7 @@ export function VaultScreen({ version, onChanged }: Props) {
       <View style={styles.empty}>
         <Ionicons name="images-outline" size={56} color={colors.dim} />
         <Text style={styles.emptyTitle}>Your Vault is empty</Text>
-        <Text style={styles.emptyText}>In the Pinterest tab, tap ⬇ on any pin, or open a pin and tap “Save pin”.</Text>
+        <Text style={styles.emptyText}>In the Pinterest or Reddit tab, tap ⬇ on any image, or open a post and tap “Save”.</Text>
       </View>
     );
   }

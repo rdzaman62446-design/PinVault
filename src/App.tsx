@@ -5,13 +5,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
+import { BrowserScreen } from './BrowserScreen';
+import { IMAGE_HOSTS } from './imageUrls';
 import { shouldLockOnBackground, unlock } from './lock';
-import { PinterestScreen } from './PinterestScreen';
 import { colors } from './theme';
 import { useUpdateCheck } from './updates';
 import { VaultScreen } from './VaultScreen';
 
-type Tab = 'pinterest' | 'vault';
+type Tab = 'pinterest' | 'reddit' | 'vault';
 
 export default function App() {
   // Blocks screenshots and hides the app's content in the recent-apps screen.
@@ -21,6 +22,8 @@ export default function App() {
   const [locked, setLocked] = useState(true);
   const [everUnlocked, setEverUnlocked] = useState(false);
   const [tab, setTab] = useState<Tab>('pinterest');
+  // Reddit loads the first time its tab is opened, not at startup.
+  const [redditOpened, setRedditOpened] = useState(false);
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
@@ -37,6 +40,11 @@ export default function App() {
 
   const bump = () => setVersion((v) => v + 1);
 
+  function openTab(next: Tab) {
+    if (next === 'reddit') setRedditOpened(true);
+    setTab(next);
+  }
+
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
@@ -44,17 +52,23 @@ export default function App() {
         {everUnlocked && (
           <>
             <View style={styles.content}>
-              {/* Both tabs stay mounted so the Pinterest page keeps its place. */}
+              {/* Tabs stay mounted so each site keeps its place. */}
               <View style={[styles.fill, tab !== 'pinterest' && styles.hidden]}>
-                <PinterestScreen active={tab === 'pinterest' && !locked} onSaved={bump} />
+                <BrowserScreen home="https://www.pinterest.com/" imageHosts={IMAGE_HOSTS.pinterest} active={tab === 'pinterest' && !locked} onSaved={bump} />
               </View>
+              {redditOpened && (
+                <View style={[styles.fill, tab !== 'reddit' && styles.hidden]}>
+                  <BrowserScreen home="https://www.reddit.com/" imageHosts={IMAGE_HOSTS.reddit} active={tab === 'reddit' && !locked} onSaved={bump} />
+                </View>
+              )}
               <View style={[styles.fill, tab !== 'vault' && styles.hidden]}>
                 <VaultScreen version={version} onChanged={bump} />
               </View>
             </View>
             <View style={styles.tabs}>
-              <TabButton icon="logo-pinterest" label="Pinterest" active={tab === 'pinterest'} onPress={() => setTab('pinterest')} />
-              <TabButton icon="lock-closed" label="Vault" active={tab === 'vault'} onPress={() => setTab('vault')} />
+              <TabButton icon="logo-pinterest" label="Pinterest" active={tab === 'pinterest'} onPress={() => openTab('pinterest')} />
+              <TabButton icon="logo-reddit" label="Reddit" active={tab === 'reddit'} onPress={() => openTab('reddit')} />
+              <TabButton icon="lock-closed" label="Vault" active={tab === 'vault'} onPress={() => openTab('vault')} />
             </View>
           </>
         )}

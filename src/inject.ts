@@ -1,9 +1,22 @@
-// JavaScript injected into pinterest.com. It adds a ⬇ button on every pin image and
+// JavaScript injected into the site. It adds a ⬇ button on every image from `hosts` and
 // reports the chosen image URL to the app with postMessage({ type: 'save', url }).
-export const INJECTED_JS = `
+export const buildInjectedJs = (hosts: string[]) => `
 (function () {
   if (window.__pinvault) return;
   window.__pinvault = true;
+  var HOSTS = ${JSON.stringify(hosts)};
+
+  function findImgs() {
+    var all = document.querySelectorAll('img');
+    var out = [];
+    for (var i = 0; i < all.length; i++) {
+      var src = all[i].currentSrc || all[i].src || '';
+      for (var h = 0; h < HOSTS.length; h++) {
+        if (src.indexOf('//' + HOSTS[h] + '/') !== -1) { out.push(all[i]); break; }
+      }
+    }
+    return out;
+  }
 
   function bestUrl(img) {
     var url = img.currentSrc || img.src;
@@ -23,7 +36,7 @@ export const INJECTED_JS = `
   }
 
   window.__pinvaultSaveVisible = function () {
-    var imgs = document.querySelectorAll('img[src*="pinimg.com"]');
+    var imgs = findImgs();
     var best = null, bestArea = 0;
     for (var i = 0; i < imgs.length; i++) {
       var r = imgs[i].getBoundingClientRect();
@@ -45,7 +58,7 @@ export const INJECTED_JS = `
   function stop(e) { e.preventDefault(); e.stopPropagation(); }
 
   function decorate() {
-    var imgs = document.querySelectorAll('img[src*="pinimg.com"]');
+    var imgs = findImgs();
     for (var i = 0; i < imgs.length; i++) {
       var img = imgs[i];
       if (img.__pinvault) continue;

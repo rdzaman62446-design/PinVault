@@ -1,16 +1,15 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { type ComponentType, type Ref, useEffect, useRef, useState } from 'react';
+import { type ComponentType, type Ref, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
 import type { WebViewProps } from 'react-native-webview/lib/WebView';
 
-import { INJECTED_JS, SAVE_VISIBLE_JS } from './inject';
+import { buildInjectedJs, SAVE_VISIBLE_JS } from './inject';
 import { resolveNavigation } from './navigation';
 import { colors } from './theme';
 import { saveFromUrl } from './vault';
 
-const HOME = 'https://www.pinterest.com/';
-// Pinterest serves a broken page to Android's in-app browser, so present as normal mobile Chrome.
+// Sites like Pinterest serve a broken page to Android's in-app browser, so present as normal mobile Chrome.
 const USER_AGENT =
   'Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36';
 
@@ -19,10 +18,12 @@ const USER_AGENT =
 type WebViewHandle = { goBack(): void; reload(): void; injectJavaScript(js: string): void };
 const WebView = RNWebView as unknown as ComponentType<WebViewProps & { ref?: Ref<WebViewHandle> }>;
 
-type Props = { active: boolean; onSaved: () => void };
+type Props = { home: string; imageHosts: string[]; active: boolean; onSaved: () => void };
 
-export function PinterestScreen({ active, onSaved }: Props) {
+/** A logged-in website (Pinterest, Reddit) with download buttons on its images. */
+export function BrowserScreen({ home, imageHosts, active, onSaved }: Props) {
   const web = useRef<WebViewHandle>(null);
+  const injectedJs = useMemo(() => buildInjectedJs(imageHosts), [imageHosts]);
   const [canGoBack, setCanGoBack] = useState(false);
   const [saving, setSaving] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
@@ -53,7 +54,7 @@ export function PinterestScreen({ active, onSaved }: Props) {
       return;
     }
     if (msg.type === 'none') {
-      showToast('No image on screen. Open a pin first.');
+      showToast('No image on screen. Open a post first.');
       return;
     }
     if (msg.type !== 'save' || !msg.url) return;
@@ -73,24 +74,24 @@ export function PinterestScreen({ active, onSaved }: Props) {
     <View style={styles.root}>
       <View style={styles.bar}>
         <BarButton icon="arrow-back" disabled={!canGoBack} onPress={() => web.current?.goBack()} />
-        <BarButton icon="home-outline" onPress={() => web.current?.injectJavaScript(`location.href=${JSON.stringify(HOME)};true;`)} />
+        <BarButton icon="home-outline" onPress={() => web.current?.injectJavaScript(`location.href=${JSON.stringify(home)};true;`)} />
         <BarButton icon="refresh" onPress={() => web.current?.reload()} />
         <View style={{ flex: 1 }} />
         {saving > 0 && <ActivityIndicator color={colors.accent} style={{ marginRight: 8 }} />}
         <Pressable style={styles.saveBtn} onPress={() => web.current?.injectJavaScript(SAVE_VISIBLE_JS)}>
           <Ionicons name="download-outline" size={18} color="#fff" />
-          <Text style={styles.saveText}>Save pin</Text>
+          <Text style={styles.saveText}>Save</Text>
         </Pressable>
       </View>
       <WebView
         ref={web}
-        source={{ uri: HOME }}
+        source={{ uri: home }}
         style={styles.web}
-        injectedJavaScript={INJECTED_JS}
+        injectedJavaScript={injectedJs}
         onMessage={onMessage}
         onNavigationStateChange={(s) => setCanGoBack(s.canGoBack)}
         onLoadStart={() => setLoadError(null)}
-        onLoadEnd={() => web.current?.injectJavaScript(INJECTED_JS)}
+        onLoadEnd={() => web.current?.injectJavaScript(injectedJs)}
         onError={(e) => setLoadError(e.nativeEvent.description || 'Page failed to load')}
         onShouldStartLoadWithRequest={(req) => {
           const nav = resolveNavigation(req.url);
