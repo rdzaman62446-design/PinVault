@@ -2,9 +2,10 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image } from 'expo-image';
 import * as Sharing from 'expo-sharing';
 import { useMemo, useState } from 'react';
-import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { exportAllToShare } from './export';
 import { whileUnlocked } from './lock';
 import { extensionOf, mimeOf } from './imageUrls';
 import { colors } from './theme';
@@ -21,6 +22,7 @@ export function VaultScreen({ version, onChanged }: Props) {
   const images = useMemo(() => (version >= 0 ? listImages() : []), [version]);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [current, setCurrent] = useState(0);
+  const [exporting, setExporting] = useState<string | null>(null);
   const tile = (width - GAP * (COLUMNS - 1)) / COLUMNS;
 
   function open(index: number) {
@@ -30,6 +32,17 @@ export function VaultScreen({ version, onChanged }: Props) {
 
   async function share(img: VaultImage) {
     await whileUnlocked(() => Sharing.shareAsync(img.uri, { mimeType: mimeOf(extensionOf(img.name)) })).catch(() => {});
+  }
+
+  async function exportAll() {
+    setExporting('Preparing…');
+    try {
+      await exportAllToShare((done, total) => setExporting(`Packing ${done}/${total}…`));
+    } catch {
+      Alert.alert('Export failed', 'Could not create the ZIP file. Check that your phone has free space.');
+    } finally {
+      setExporting(null);
+    }
   }
 
   function remove(img: VaultImage) {
@@ -62,7 +75,13 @@ export function VaultScreen({ version, onChanged }: Props) {
 
   return (
     <View style={styles.root}>
-      <Text style={styles.count}>{images.length} {images.length === 1 ? 'image' : 'images'}</Text>
+      <View style={styles.header}>
+        <Text style={styles.count}>{exporting ?? `${images.length} ${images.length === 1 ? 'image' : 'images'}`}</Text>
+        <Pressable style={[styles.exportBtn, exporting && styles.disabled]} onPress={exportAll} disabled={!!exporting}>
+          {exporting ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="cloud-upload-outline" size={18} color="#fff" />}
+          <Text style={styles.exportText}>Export all</Text>
+        </Pressable>
+      </View>
       <FlatList
         data={images}
         keyExtractor={(i) => i.uri}
@@ -113,7 +132,11 @@ function ViewerButton({ icon, label, onPress, color = colors.text }: { icon: key
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  count: { color: colors.muted, paddingHorizontal: 12, paddingVertical: 10 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8 },
+  count: { color: colors.muted },
+  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.accent, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 18 },
+  exportText: { color: '#fff', fontWeight: '600' },
+  disabled: { opacity: 0.6 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10, backgroundColor: colors.bg },
   emptyTitle: { color: colors.text, fontSize: 18, fontWeight: '600' },
   emptyText: { color: colors.muted, textAlign: 'center', lineHeight: 20 },
