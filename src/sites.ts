@@ -1,6 +1,6 @@
 import type Ionicons from '@expo/vector-icons/Ionicons';
 
-import { REDDIT_CLEANUP_JS } from './inject';
+import { INSTAGRAM_JS, REDDIT_CLEANUP_JS } from './inject';
 
 // Sites like Pinterest serve a broken page to Android's in-app browser, so present as normal mobile Chrome.
 const MOBILE_CHROME_UA =
@@ -55,6 +55,7 @@ export const SITE_LIST: Site[] = [
     home: 'https://www.instagram.com/',
     imageHosts: ['cdninstagram.com', 'fbcdn.net'],
     userAgent: MOBILE_CHROME_UA,
+    extraJs: INSTAGRAM_JS,
   },
   {
     id: 'x',

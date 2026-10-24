@@ -103,9 +103,12 @@ export const buildInjectedJs = (hosts: string[], extraJs = '') => `
     window.__pinvaultCollecting = true;
     window.__pinvaultStop = false;
     var seen = {}, urls = [], lastHeight = -1, still = 0;
+    // A site can limit collecting to part of the page (e.g. just the open post).
+    var scope = (window.__pinvaultScope && window.__pinvaultScope()) || null;
     function grab() {
       var imgs = findImgs();
       for (var i = 0; i < imgs.length; i++) {
+        if (scope && !scope.contains(imgs[i])) continue;
         var r = imgs[i].getBoundingClientRect();
         var lazy = imgs[i].hasAttribute('data-lazy-src');
         if (!lazy && (r.width < 80 || r.height < 80)) continue;
@@ -117,9 +120,36 @@ export const buildInjectedJs = (hosts: string[], extraJs = '') => `
       window.__pinvaultCollecting = false;
       send({ type: 'collected', urls: urls, title: document.title || '' });
     }
+    // Carousels (e.g. Instagram multi-photo posts) only load a few slides at a time, so tap
+    // "Next" on each one in view, collecting after every tap, until it runs out of slides.
+    function nextButton() {
+      var sel = window.__pinvaultCarouselNext;
+      if (!sel) return null;
+      var btns = document.querySelectorAll(sel);
+      for (var i = 0; i < btns.length; i++) {
+        var b = btns[i], r = b.getBoundingClientRect();
+        if (b.disabled || r.width === 0 || r.bottom < 0 || r.top > window.innerHeight) continue;
+        if (scope && !scope.contains(b)) continue;
+        return b;
+      }
+      return null;
+    }
+    function walkCarousels(done) {
+      var taps = 0;
+      (function next() {
+        try { grab(); } catch (e) {}
+        send({ type: 'collecting', count: urls.length });
+        var b = window.__pinvaultStop || taps >= 40 ? null : nextButton();
+        if (!b) return done();
+        taps++;
+        b.click();
+        setTimeout(next, 550);
+      })();
+    }
     function step() {
-      try { grab(); } catch (e) {}
-      send({ type: 'collecting', count: urls.length });
+      walkCarousels(afterWalk);
+    }
+    function afterWalk() {
       var height = document.documentElement.scrollHeight;
       var atBottom = window.innerHeight + window.scrollY >= height - 40;
       still = atBottom && height === lastHeight ? still + 1 : 0;
@@ -164,6 +194,15 @@ export const REDDIT_CLEANUP_JS = `
     }
   }
   setInterval(function () { try { cleanReddit(); } catch (e) {} }, 700);
+`;
+
+// Instagram: walk multi-photo posts with their "Next" button, and on a post page collect only
+// that post (not the "More posts" grid below it).
+export const INSTAGRAM_JS = `
+  window.__pinvaultCarouselNext = 'button[aria-label="Next"]';
+  window.__pinvaultScope = function () {
+    return /^\\/(p|reel)\\//.test(location.pathname) ? document.querySelector('article') || document.querySelector('main') : null;
+  };
 `;
 
 export const SAVE_VISIBLE_JS = 'window.__pinvaultSaveVisible && window.__pinvaultSaveVisible(); true;';
