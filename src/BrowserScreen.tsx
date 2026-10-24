@@ -20,10 +20,10 @@ const WebView = RNWebView as unknown as ComponentType<WebViewProps & { ref?: Ref
 
 export type Site = { home: string; imageHosts: string[]; userAgent: string; extraJs?: string };
 
-type Props = { site: Site; active: boolean; onSaved: () => void };
+type Props = { site: Site; active: boolean; onSaved: () => void; onExit: () => void };
 
 /** A logged-in website (Pinterest, Reddit) with download buttons on its images. */
-export function BrowserScreen({ site, active, onSaved }: Props) {
+export function BrowserScreen({ site, active, onSaved, onExit }: Props) {
   const { home } = site;
   const web = useRef<WebViewHandle>(null);
   const injectedJs = useMemo(() => buildInjectedJs(site.imageHosts, site.extraJs), [site]);
@@ -42,12 +42,13 @@ export function BrowserScreen({ site, active, onSaved }: Props) {
   useEffect(() => {
     if (!active) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (!canGoBack) return false;
-      web.current?.goBack();
+      // Back goes to the previous page, or leaves the site when there is none.
+      if (canGoBack) web.current?.goBack();
+      else onExit();
       return true;
     });
     return () => sub.remove();
-  }, [active, canGoBack]);
+  }, [active, canGoBack, onExit]);
 
   async function onMessage(e: WebViewMessageEvent) {
     let msg: { type?: string; url?: string };

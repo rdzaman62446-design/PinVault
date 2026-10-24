@@ -7,4 +7,6 @@ export const colors = {
   muted: '#9a9aa5',
   accent: '#e60023',
   danger: '#ff4d4f',
+  pinterest: '#e60023',
+  reddit: '#ff4500',
 };

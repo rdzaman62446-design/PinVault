@@ -2,17 +2,18 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { usePreventScreenCapture } from 'expo-screen-capture';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
-import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrowserScreen } from './BrowserScreen';
+import { HomeScreen } from './HomeScreen';
 import { shouldLockOnBackground, unlock } from './lock';
 import { SITES } from './sites';
 import { colors } from './theme';
 import { useUpdateCheck } from './updates';
 import { VaultScreen } from './VaultScreen';
 
-type Tab = 'pinterest' | 'reddit' | 'vault';
+type Screen = 'home' | 'pinterest' | 'reddit' | 'vault';
 
 export default function App() {
   // Blocks screenshots and hides the app's content in the recent-apps screen.
@@ -21,9 +22,9 @@ export default function App() {
 
   const [locked, setLocked] = useState(true);
   const [everUnlocked, setEverUnlocked] = useState(false);
-  const [tab, setTab] = useState<Tab>('pinterest');
-  // Reddit loads the first time its tab is opened, not at startup.
-  const [redditOpened, setRedditOpened] = useState(false);
+  const [screen, setScreen] = useState<Screen>('home');
+  // Each site loads the first time it's opened, then stays mounted to keep its place.
+  const [opened, setOpened] = useState({ pinterest: false, reddit: false });
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
@@ -38,11 +39,21 @@ export default function App() {
     setEverUnlocked(true);
   }, []);
 
+  // Android back from the Vault returns Home. (Sites handle their own back button.)
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (screen !== 'vault') return false;
+      setScreen('home');
+      return true;
+    });
+    return () => sub.remove();
+  }, [screen]);
+
   const bump = () => setVersion((v) => v + 1);
 
-  function openTab(next: Tab) {
-    if (next === 'reddit') setRedditOpened(true);
-    setTab(next);
+  function open(next: Screen) {
+    if (next === 'pinterest' || next === 'reddit') setOpened((o) => ({ ...o, [next]: true }));
+    setScreen(next);
   }
 
   return (
@@ -52,23 +63,31 @@ export default function App() {
         {everUnlocked && (
           <>
             <View style={styles.content}>
-              {/* Tabs stay mounted so each site keeps its place. */}
-              <View style={[styles.fill, tab !== 'pinterest' && styles.hidden]}>
-                <BrowserScreen site={SITES.pinterest} active={tab === 'pinterest' && !locked} onSaved={bump} />
+              <View style={[styles.fill, screen !== 'home' && styles.hidden]}>
+                <HomeScreen
+                  version={version}
+                  openPinterest={() => open('pinterest')}
+                  openReddit={() => open('reddit')}
+                  openVault={() => open('vault')}
+                />
               </View>
-              {redditOpened && (
-                <View style={[styles.fill, tab !== 'reddit' && styles.hidden]}>
-                  <BrowserScreen site={SITES.reddit} active={tab === 'reddit' && !locked} onSaved={bump} />
+              {opened.pinterest && (
+                <View style={[styles.fill, screen !== 'pinterest' && styles.hidden]}>
+                  <BrowserScreen site={SITES.pinterest} active={screen === 'pinterest' && !locked} onSaved={bump} onExit={() => open('home')} />
                 </View>
               )}
-              <View style={[styles.fill, tab !== 'vault' && styles.hidden]}>
+              {opened.reddit && (
+                <View style={[styles.fill, screen !== 'reddit' && styles.hidden]}>
+                  <BrowserScreen site={SITES.reddit} active={screen === 'reddit' && !locked} onSaved={bump} onExit={() => open('home')} />
+                </View>
+              )}
+              <View style={[styles.fill, screen !== 'vault' && styles.hidden]}>
                 <VaultScreen version={version} onChanged={bump} />
               </View>
             </View>
             <View style={styles.tabs}>
-              <TabButton icon="logo-pinterest" label="Pinterest" active={tab === 'pinterest'} onPress={() => openTab('pinterest')} />
-              <TabButton icon="logo-reddit" label="Reddit" active={tab === 'reddit'} onPress={() => openTab('reddit')} />
-              <TabButton icon="lock-closed" label="Vault" active={tab === 'vault'} onPress={() => openTab('vault')} />
+              <TabButton icon="home" label="Home" active={screen !== 'vault'} onPress={() => open('home')} />
+              <TabButton icon="lock-closed" label="Vault" active={screen === 'vault'} onPress={() => open('vault')} />
             </View>
           </>
         )}
