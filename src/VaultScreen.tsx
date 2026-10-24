@@ -11,11 +11,11 @@ import { exportToShare } from './export';
 import { mimeOf } from './imageUrls';
 import { whileUnlocked } from './lock';
 import { NamePrompt, Sheet, type SheetOption } from './Sheet';
-import { SITES, type SiteId } from './sites';
+import { type Site, SITE_LIST, SITES, type SiteId } from './sites';
 import { colors } from './theme';
 import { useFullImage, useThumb } from './useThumb';
 import { createAlbum, decryptToTempFile, deleteAlbum, deleteImages, isVideo, moveToAlbum, renameAlbum, useVault } from './vault';
-import { imagesInAlbum, type VaultImage } from './vaultFilters';
+import { ALL, type AlbumRef, imagesIn, siteAlbum, type VaultImage } from './vaultFilters';
 
 type Layout = 'tiles' | 'cards' | 'feed';
 const LAYOUTS: { id: Layout; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -25,9 +25,8 @@ const LAYOUTS: { id: Layout; label: string; icon: keyof typeof Ionicons.glyphMap
 ];
 const LAYOUT_KEY = 'vault-layout';
 
-/** Which album is open: 'all', an album id, or null for the albums page. */
-type Open = string | null;
-const ALL = 'all';
+/** The open album, or null for the albums page. */
+type Open = AlbumRef | null;
 
 type SheetState = { title?: string; options: SheetOption[] } | null;
 type Prompt = { title: string; initial?: string; confirmLabel?: string; onSubmit: (name: string) => void } | null;
@@ -55,8 +54,9 @@ export function VaultScreen() {
   }
 
   // An album that was deleted while open falls back to the albums page.
-  const openAlbum = open && open !== ALL ? vault.albums.find((a) => a.id === open) : null;
-  const showing: Open = open === ALL || openAlbum ? open : null;
+  const openSite = open?.startsWith('site:') ? SITES[open.slice(5) as SiteId] : null;
+  const openAlbum = open && open !== ALL && !openSite ? vault.albums.find((a) => a.id === open) : null;
+  const showing: Open = open === ALL || openSite || openAlbum ? open : null;
 
   if (vault.error) return <Centered icon="alert-circle-outline" title={vault.error} />;
   if (!vault.ready) return <Centered loading title="Opening your vault…" />;
@@ -79,8 +79,8 @@ export function VaultScreen() {
         />
       ) : (
         <AlbumView
-          album={showing === ALL ? null : showing}
-          title={openAlbum?.name ?? 'All'}
+          album={showing}
+          title={openSite?.name ?? openAlbum?.name ?? 'All'}
           onBack={() => setOpen(null)}
           setSheet={setSheet}
           ask={ask}
@@ -106,21 +106,38 @@ export function VaultScreen() {
   );
 }
 
-/** First page of the Vault: "All" followed by every album, as cover cards. */
-function AlbumsPage({ onOpen, onNewAlbum, onAlbumMenu }: { onOpen: (id: string) => void; onNewAlbum: () => void; onAlbumMenu: (id: string, name: string) => void }) {
+type AlbumEntry = { id: AlbumRef; name: string; count: number; cover: string | null; site?: Site };
+
+/** First page of the Vault: "All" and one automatic album per app, then the user's own albums. */
+function AlbumsPage({ onOpen, onNewAlbum, onAlbumMenu }: { onOpen: (id: AlbumRef) => void; onNewAlbum: () => void; onAlbumMenu: (id: string, name: string) => void }) {
   const vault = useVault();
   const { width } = useWindowDimensions();
   const card = (width - 16 * 2 - 14) / 2;
 
-  const albums = useMemo(() => {
-    const newest = imagesInAlbum(vault.images, null);
-    const byAlbum = new Map<string, VaultImage[]>();
-    for (const img of newest) if (img.album) byAlbum.set(img.album, [...(byAlbum.get(img.album) ?? []), img]);
-    return [
-      { id: ALL, name: 'All', count: newest.length, cover: newest[0]?.key ?? null },
-      ...vault.albums.map((a) => ({ id: a.id, name: a.name, count: byAlbum.get(a.id)?.length ?? 0, cover: byAlbum.get(a.id)?.[0]?.key ?? null })),
-    ];
+  const { builtIn, mine } = useMemo(() => {
+    const entry = (id: AlbumRef, name: string, site?: Site): AlbumEntry => {
+      const imgs = imagesIn(vault.images, id);
+      return { id, name, site, count: imgs.length, cover: imgs[0]?.key ?? null };
+    };
+    return {
+      builtIn: [entry(ALL, 'All'), ...SITE_LIST.map((s) => entry(siteAlbum(s.id), s.name, s))],
+      mine: vault.albums.map((a) => entry(a.id, a.name)),
+    };
   }, [vault.images, vault.albums]);
+
+  const cardFor = (a: AlbumEntry, custom: boolean) => (
+    <AlbumCard
+      key={a.id}
+      size={card}
+      name={a.name}
+      count={a.count}
+      cover={a.cover}
+      isAll={a.id === ALL}
+      site={a.site}
+      onPress={() => onOpen(a.id)}
+      onLongPress={custom ? () => onAlbumMenu(a.id, a.name) : undefined}
+    />
+  );
 
   return (
     <ScrollView contentContainerStyle={styles.albumsPage}>
@@ -138,19 +155,11 @@ function AlbumsPage({ onOpen, onNewAlbum, onAlbumMenu }: { onOpen: (id: string) 
         </View>
       )}
 
+      <View style={styles.albumGrid}>{builtIn.map((a) => cardFor(a, false))}</View>
+
+      <Text style={styles.section}>My albums</Text>
       <View style={styles.albumGrid}>
-        {albums.map((a) => (
-          <AlbumCard
-            key={a.id}
-            size={card}
-            name={a.name}
-            count={a.count}
-            cover={a.cover}
-            isAll={a.id === ALL}
-            onPress={() => onOpen(a.id)}
-            onLongPress={a.id === ALL ? undefined : () => onAlbumMenu(a.id, a.name)}
-          />
-        ))}
+        {mine.map((a) => cardFor(a, true))}
         <Pressable style={({ pressed }) => [{ width: card }, pressed && styles.pressed]} onPress={onNewAlbum}>
           <View style={[styles.newAlbum, { width: card, height: card }]}>
             <Ionicons name="add" size={36} color={colors.muted} />
@@ -170,6 +179,7 @@ function AlbumCard({
   count,
   cover,
   isAll,
+  site,
   onPress,
   onLongPress,
 }: {
@@ -178,17 +188,28 @@ function AlbumCard({
   count: number;
   cover: string | null;
   isAll: boolean;
+  site?: Site;
   onPress: () => void;
   onLongPress?: () => void;
 }) {
+  const empty = site ? (
+    <Ionicons name={site.icon} size={44} color={site.id === 'x' ? colors.muted : site.color} />
+  ) : (
+    <Ionicons name={isAll ? 'images-outline' : 'albums-outline'} size={36} color={colors.dim} />
+  );
   return (
     <Pressable style={({ pressed }) => [{ width: size }, pressed && styles.pressed]} onPress={onPress} onLongPress={onLongPress} delayLongPress={300}>
       <View style={[styles.albumCover, { width: size, height: size }]}>
-        {cover ? <CoverImage imageKey={cover} /> : <Ionicons name={isAll ? 'images-outline' : 'albums-outline'} size={36} color={colors.dim} />}
+        {cover ? <CoverImage imageKey={cover} /> : empty}
         {isAll && (
           <View style={styles.allBadge}>
             <Ionicons name="lock-closed" size={11} color="#fff" />
             <Text style={styles.allBadgeText}>ALL</Text>
+          </View>
+        )}
+        {site && cover && (
+          <View style={[styles.siteBadge, { backgroundColor: site.color }]}>
+            <Ionicons name={site.icon} size={14} color="#fff" />
           </View>
         )}
       </View>
@@ -213,7 +234,7 @@ function AlbumView({
   setSheet,
   ask,
 }: {
-  album: string | null;
+  album: AlbumRef;
   title: string;
   onBack: () => void;
   setSheet: (s: SheetState) => void;
@@ -226,7 +247,7 @@ function AlbumView({
   const [viewerKey, setViewerKey] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
 
-  const shown = useMemo(() => imagesInAlbum(vault.images, album), [vault.images, album]);
+  const shown = useMemo(() => imagesIn(vault.images, album), [vault.images, album]);
 
   useEffect(() => {
     AsyncStorage.getItem(LAYOUT_KEY)
@@ -356,8 +377,12 @@ function AlbumView({
       {shown.length === 0 ? (
         <Centered
           icon="images-outline"
-          title={album ? 'This album is empty' : 'Your Vault is empty'}
-          text={album ? 'Long-press images in “All”, then tap Album to move them here.' : 'Open a site from Home and tap ⬇ on any image, or use “Save all”.'}
+          title={album === ALL ? 'Your Vault is empty' : 'This album is empty'}
+          text={
+            album === ALL || album.startsWith('site:')
+              ? 'Open a site from Home and tap ⬇ on any image, or use “Save all”.'
+              : 'Long-press images in “All”, then tap Album to move them here.'
+          }
         />
       ) : (
         <FlatList
@@ -617,6 +642,8 @@ const styles = StyleSheet.create({
   albumGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 18 },
   albumCover: { borderRadius: 20, overflow: 'hidden', backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   allBadge: { position: 'absolute', top: 10, left: 10, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.accent, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  siteBadge: { position: 'absolute', top: 10, left: 10, width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.8)' },
+  section: { color: colors.muted, fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.2, marginTop: 26 },
   allBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
   albumName: { color: colors.text, fontSize: 15, fontWeight: '700', marginTop: 8 },
   albumCount: { color: colors.muted, fontSize: 12, marginTop: 1 },

@@ -14,9 +14,16 @@ export type VaultImage = {
 
 export type Album = { id: string; name: string; createdAt: number };
 
-/** Images in an album (null = all images), newest first. */
-export function imagesInAlbum(images: VaultImage[], album: string | null): VaultImage[] {
-  return images.filter((i) => album === null || i.album === album).sort((a, b) => b.savedAt - a.savedAt);
+/** 'all', an automatic per-app album ('site:pinterest'), or one of the user's album ids. */
+export type AlbumRef = string;
+export const ALL: AlbumRef = 'all';
+export const siteAlbum = (source: SourceId): AlbumRef => `site:${source}`;
+
+/** Images in an album, newest first. */
+export function imagesIn(images: VaultImage[], ref: AlbumRef): VaultImage[] {
+  const keep =
+    ref === ALL ? () => true : ref.startsWith('site:') ? (i: VaultImage) => i.source === ref.slice(5) : (i: VaultImage) => i.album === ref;
+  return images.filter(keep).sort((a, b) => b.savedAt - a.savedAt);
 }
 
 /** v1.0/1.1 stored plain files named `<savedAt>_<id>.<ext>`; guess where they came from. */
