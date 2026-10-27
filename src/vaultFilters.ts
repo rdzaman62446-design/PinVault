@@ -33,14 +33,3 @@ export function parseLegacyName(name: string): Omit<VaultImage, 'key' | 'album' 
   const [, savedAt, id, ext] = m;
   return { id, ext, savedAt: parseInt(savedAt, 10), source: /^[0-9a-f]{32}$/.test(id) ? 'pinterest' : 'reddit' };
 }
-
-/** Album name from a page title, e.g. "Cozy rooms | Pinterest" → "Cozy rooms". */
-export function albumNameFromTitle(title: string, fallback: string): string {
-  const name = title
-    .replace(/\s*[|:–—-]\s*(Pinterest|Reddit|Instagram|X|Tumblr)\b.*$/i, '')
-    .replace(/\s+on (Pinterest|X|Instagram|Tumblr)\s*$/i, '')
-    .replace(/\s*:\s*r\/\w+\s*$/, '')
-    .replace(/^\(\d+\)\s*/, '')
-    .trim();
-  return (name || fallback).slice(0, 40);
-}

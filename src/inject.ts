@@ -58,20 +58,6 @@ export const buildInjectedJs = (hosts: string[], extraJs = '') => `
     }, function () { send({ type: 'videoFail' }); });
   }
 
-  window.__pinvaultSaveVisible = function () {
-    var items = findImgs().concat(findVideos());
-    var best = null, bestArea = 0;
-    for (var i = 0; i < items.length; i++) {
-      var r = items[i].getBoundingClientRect();
-      var w = Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0));
-      var h = Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0));
-      if (w * h > bestArea) { bestArea = w * h; best = items[i]; }
-    }
-    if (!best || bestArea <= 10000) send({ type: 'none' });
-    else if (best.tagName === 'VIDEO') saveVideo(best);
-    else send({ type: 'save', url: bestUrl(best) });
-  };
-
   var style = document.createElement('style');
   style.textContent =
     '.pinvault-btn{position:absolute;top:8px;right:8px;z-index:2147483647;width:36px;height:36px;' +
@@ -111,94 +97,6 @@ export const buildInjectedJs = (hosts: string[], extraJs = '') => `
     for (var j = 0; j < vids.length; j++) addButton(vids[j], saveVideo);
   }
 
-  // "Save all": scrolls through the page collecting every image, then reports the list.
-  window.__pinvaultCollect = function () {
-    if (window.__pinvaultCollecting) return;
-    window.__pinvaultCollecting = true;
-    window.__pinvaultStop = false;
-    var seen = {}, urls = [], lastHeight = -1, still = 0, videos = [];
-    // A site can limit collecting to part of the page (e.g. just the open post).
-    var scope = (window.__pinvaultScope && window.__pinvaultScope()) || null;
-    function grab() {
-      var imgs = findImgs();
-      for (var i = 0; i < imgs.length; i++) {
-        if (scope && !scope.contains(imgs[i])) continue;
-        var r = imgs[i].getBoundingClientRect();
-        var lazy = imgs[i].hasAttribute('data-lazy-src');
-        if (!lazy && (r.width < 80 || r.height < 80)) continue;
-        var u = bestUrl(imgs[i]);
-        if (u && !seen[u]) { seen[u] = 1; urls.push(u); }
-      }
-      var vids = findVideos();
-      for (var j = 0; j < vids.length; j++) {
-        if (scope && !scope.contains(vids[j])) continue;
-        if (videos.indexOf(vids[j]) === -1) videos.push(vids[j]);
-      }
-    }
-    function finish() {
-      // Turn the videos seen on the way into file URLs, one at a time.
-      var i = 0;
-      (function next() {
-        if (i >= videos.length || window.__pinvaultStop) {
-          window.__pinvaultCollecting = false;
-          send({ type: 'collected', urls: urls, title: document.title || '' });
-          return;
-        }
-        var v = videos[i++];
-        // Prefer every video of the post (carousels show only one at a time).
-        var all = window.__pinvaultResolveAllVideos || function (el) {
-          return window.__pinvaultResolveVideo(el).then(function (u) { return u ? [u] : []; });
-        };
-        all(v).then(function (list) {
-          for (var k = 0; k < list.length; k++) if (!seen[list[k]]) { seen[list[k]] = 1; urls.push(list[k]); }
-        }, function () {}).then(function () {
-          send({ type: 'collecting', count: urls.length });
-          next();
-        });
-      })();
-    }
-    // Carousels (e.g. Instagram multi-photo posts) only load a few slides at a time, so tap
-    // "Next" on each one in view, collecting after every tap, until it runs out of slides.
-    function nextButton() {
-      var sel = window.__pinvaultCarouselNext;
-      if (!sel) return null;
-      var btns = document.querySelectorAll(sel);
-      for (var i = 0; i < btns.length; i++) {
-        var b = btns[i], r = b.getBoundingClientRect();
-        if (b.disabled || r.width === 0 || r.bottom < 0 || r.top > window.innerHeight) continue;
-        if (scope && !scope.contains(b)) continue;
-        return b;
-      }
-      return null;
-    }
-    function walkCarousels(done) {
-      var taps = 0;
-      (function next() {
-        try { grab(); } catch (e) {}
-        send({ type: 'collecting', count: urls.length });
-        var b = window.__pinvaultStop || taps >= 40 ? null : nextButton();
-        if (!b) return done();
-        taps++;
-        b.click();
-        setTimeout(next, 550);
-      })();
-    }
-    function step() {
-      walkCarousels(afterWalk);
-    }
-    function afterWalk() {
-      var height = document.documentElement.scrollHeight;
-      var atBottom = window.innerHeight + window.scrollY >= height - 40;
-      still = atBottom && height === lastHeight ? still + 1 : 0;
-      lastHeight = height;
-      if (window.__pinvaultStop || urls.length >= 300 || still >= 4) return finish();
-      window.scrollBy(0, Math.round(window.innerHeight * 0.8));
-      setTimeout(step, 900);
-    }
-    window.scrollTo(0, 0);
-    setTimeout(step, 700);
-  };
-
   function safeDecorate() { try { decorate(); } catch (e) {} }
   setInterval(safeDecorate, 800);
   safeDecorate();
@@ -233,14 +131,8 @@ export const REDDIT_CLEANUP_JS = `
   setInterval(function () { try { cleanReddit(); } catch (e) {} }, 700);
 `;
 
-// Instagram: walk multi-photo posts with their "Next" button, and on a post page collect only
-// that post (not the "More posts" grid below it).
+// Instagram: lets the ⬇ button on reels and videos find the actual video file.
 export const INSTAGRAM_JS = String.raw`
-  window.__pinvaultCarouselNext = 'button[aria-label="Next"]';
-  window.__pinvaultScope = function () {
-    return /^\/(p|reel)\//.test(location.pathname) ? document.querySelector('article') || document.querySelector('main') : null;
-  };
-
   // Reels stream through blob: URLs, so ask Instagram's own API (with the logged-in session)
   // for the post's video files. Shortcode -> media id uses Instagram's base64 alphabet.
   var IG_APP_ID = '936619743392459';
@@ -297,13 +189,6 @@ export const INSTAGRAM_JS = String.raw`
     }
     return infoCache[code];
   }
-  window.__pinvaultResolveAllVideos = function (video) {
-    var src = video.currentSrc || video.src || '';
-    if (/^https?:/.test(src)) return Promise.resolve([src]);
-    var code = codeFor(video);
-    if (!code) return Promise.resolve([]);
-    return videosFor(code).then(function (vids) { return vids.map(function (v) { return v.url; }); });
-  };
   window.__pinvaultResolveVideo = function (video) {
     var src = video.currentSrc || video.src || '';
     if (/^https?:/.test(src)) return Promise.resolve(src);
@@ -317,7 +202,3 @@ export const INSTAGRAM_JS = String.raw`
     });
   };
 `;
-
-export const SAVE_VISIBLE_JS = 'window.__pinvaultSaveVisible && window.__pinvaultSaveVisible(); true;';
-export const COLLECT_ALL_JS = 'window.__pinvaultCollect && window.__pinvaultCollect(); true;';
-export const STOP_COLLECT_JS = 'window.__pinvaultStop = true; true;';

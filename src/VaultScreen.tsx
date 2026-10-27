@@ -380,7 +380,7 @@ function AlbumView({
           title={album === ALL ? 'Your Vault is empty' : 'This album is empty'}
           text={
             album === ALL || album.startsWith('site:')
-              ? 'Open a site from Home and tap ⬇ on any image, or use “Save all”.'
+              ? 'Open a site from Home and tap ⬇ on any image or video.'
               : 'Long-press images in “All”, then tap Album to move them here.'
           }
         />
